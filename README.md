@@ -7,8 +7,8 @@ When I travel to the windows world, one frustration is that I cannot find free, 
 metronome. So I try to write a python metronome, in my capacity, as accurate and flexible as gtklick.
 
 It is somehow customizable, but all the customization should be done by directly editing the top part of
-the program. If you want to use this program in Windows, at least you will need to change the wav files'
-path. Hopefully you will find how to do it when you read the program.
+the program. Most probably you will need to change the wav files' path. Hopefully you will find how to do
+it when you read the program (currently the paths are set in line 55 and 56).
 
 You need to first setup python, wxpython and pyaudio in order for this program to work.
 
