@@ -8,7 +8,7 @@ metronome. So I try to write a python metronome, in my capacity, as accurate and
 
 It is somehow customizable, but all the customization should be done by directly editing the top part of
 the program. Most probably you will need to change the wav files' path. Hopefully you will find how to do
-it when you read the program (currently the paths are set in line 55 and 56).
+it when you read the program (currently the paths are set in line 57 and 58).
 
 You need to first setup python, wxpython numpy and pyaudio (any others?) in order for this program to work.
 
