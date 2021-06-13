@@ -199,6 +199,9 @@ class metronome():
     def ring(self, check = None):
 
         self.stream.start_stream()
+        self.P_index = 0
+        self.B_index = 0
+        self.clickp = 0
 
         if debug == True:
             print("stream started: pattern = " + str(self.pattern)  + "nval: " + str(self.nval)
