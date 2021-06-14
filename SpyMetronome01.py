@@ -28,7 +28,7 @@ import threading
 #        use of configparser:
 #             initial value for bpm and pattern
 #             sound file selection
-#        temp settig by tapping
+#        tempo settig by tapping
 
 programName = "Spy Metronome"
 
@@ -41,8 +41,6 @@ OFF = wx.CHK_UNCHECKED
 noteValue = {"1":4, "2":2, "4":1, "8":0.5, "16":0.25}
 noteValueIndex = {"1":0, "2":1, "4":2, "8":3, "16":4}
 
-# click sound is prepared long enough for LONG_NVAL ("1" is "whole note") in BPM_MIN
-LONG_NVAL = "1" 
 EVENT_WAIT = 0.1 # waiting time for an thread stopping event to occur
 
 # you can change following values, but I suppose no such need.
@@ -88,30 +86,31 @@ class metronome():
 
     def __init__(self, parent, p = None, nval = None, bpm = None,
                  normal = None, accent = None, pattern = None):
-        self.started = False # off
-        self.p = p           # PyAudio instans
+        self.p = p           # PyAudio instance
         self.nval = nval     # whole note (4), half note (2), etc.
         self.bpm = bpm
         self.pattern = pattern   
         self.P_index = 0     # index of "click" in the pattern
         self.B_index = 0     # posision index in the current "click"
-        self.event = None
-        self.volume = 100
-
-        self.stream = None
         self.wf = {}         # click wav file dict. normal click and accent click
                              # should have same framerate, width and channels.
         self.click = {}      # click sound data dict. each element is a list of "frame" of the sound.
-        self.clicklen = 0
-        self.clickp = 0
+        self.clicklen = 0    # clicklen = framerate * interval : number of frames within interval
+        self.clickp = 0      # current position in "clicklen"
         self.currentClick = None
-        off = None
+
+        self.stream = None
+        self.event = None
+        self.started = False # whether stream has started or not
+
         self.framerate = None
         self.width =  None
         self.channels = None
         
-        for each in [[normal, ON], [accent, ACCENT], [off, OFF]]:
-            # if "off" is the first, some values needed for the calculation will not be obtained.
+        self.volume = 100
+
+        for each in [[normal, ON], [accent, ACCENT], [None, OFF]]:
+            # "OFF" should come after all the values needed for the calculation have been obtained.
             snd = each[1] # just for readability
             if each[0] != None:
                 self.wf[snd] = wave.open(each[0], 'rb')
@@ -133,9 +132,7 @@ class metronome():
                     exit(1)
 
             # from now on, "click" date for ON, ACCENT and OFF.
-            # framerate, width and channels should be the same in ACCENT, ON and OFF(silent)
-            self.max_interval = 60 * noteValue[LONG_NVAL] / BPM_MIN
-            self.max_len = int(self.framerate * self.max_interval)
+            # framerate, width and channels should be the same in ACCENT ahd ON
 
             self.click[snd] = []
             if snd == OFF:
@@ -144,13 +141,12 @@ class metronome():
                 frames = self.wf[snd].getnframes()
             for i in range(0, frames):
                 self.click[snd].append(self.wf[snd].readframes(1))
-                #        # i frame (sample) = (width (i.e. bytes/sample e.g 2 bytes for 16 bit file.)
-                #        #                    * channels) bytes
+                # i frame (sample) = (width (i.e. bytes/sample e.g 2 bytes for 16 bit file.)
+                #                    * channels) bytes
 
         self.Set_Interval(nval = nval, bpm = bpm)
         self.Set_Pattern(pattern = pattern)
 
-        self.currentClick = self.clicklist[self.P_index]
         self.stream = self.p.open (format = self.p.get_format_from_width(self.width),
                                    channels = self.channels,
                                    rate = self.framerate,
@@ -162,9 +158,8 @@ class metronome():
     # and B_index indicate the position of byte in the "click"
 
     def callback(self, in_data, frame_count, time_info, status):
-        i = 0
         data =b""
-        while i < frame_count:           # getting "frame_count" size of data
+        for i in range (0, frame_count):           # getting "frame_count" size of data
             if self.clickp >= self.clicklen:
                 self.P_index  = self.P_index  + 1
                 if self.P_index >= len(self.clicklist):
@@ -192,16 +187,16 @@ class metronome():
                 #    chunk = numpy.frombuffer(chunk, numpy.float32) * (self.volume/100.)
                 #    chunk = chunk1.astype(numpy.float32).tobytes()
             data = data + chunk
-            i = i + 1
 
         return (data, pyaudio.paContinue)
 
     def ring(self, check = None):
 
-        self.stream.start_stream()
         self.P_index = 0
         self.B_index = 0
+        self.currentClick = self.clicklist[self.P_index]
         self.clickp = 0
+        self.stream.start_stream()
 
         if debug == True:
             print("stream started: pattern = " + str(self.pattern)  + "nval: " + str(self.nval)
@@ -333,15 +328,13 @@ class mainWindow(wx.Frame):
 
         self.TickList = []
             
-        i = 0
-        while i < TICK_NUM:
+        for i in range(0, TICK_NUM):
             newTick = wx.CheckBox(self, wx.Window.NewControlId(), label = str(i + 1),
                                   style = wx.CHK_3STATE | wx.CHK_ALLOW_3RD_STATE_FOR_USER)
             newTick.SetValue(wx.CHK_UNCHECKED)
             self.PatternBox.Add(newTick)
             self.TickList.append(newTick)
             self.Bind(wx.EVT_CHECKBOX, self.On_Tick_Change, newTick)
-            i = i + 1
 
         if ENABLE_VOL == True:
             self.VolTitle =  wx.StaticText(self, label="Volume", style = wx.ALIGN_CENTRE)
@@ -365,30 +358,37 @@ class mainWindow(wx.Frame):
 
         self.Redraw_PatternBox(pattern = init_pattern) # pattern is set here
 
-        box.Add(self.BpmTitle, flag = wx.LEFT | wx.RIGHT | wx.TOP,
-                border = borderValue)
-        box.Add(self.BpmCtrl, flag = wx.LEFT | wx.RIGHT, border = borderValue)
-        
         self.TimeSigBox.Add(self.NumNoteCtrl)
         self.TimeSigBox.Add(self.TimeSigSeparator, wx.ALIGN_BOTTOM)
         self.TimeSigBox.Add(self.NValChoice)
 
-        box.AddSpacer(borderValue)
-        box.Add(self.TimeSigTitle, flag = wx.LEFT | wx.RIGHT,
-                border = borderValue)
-        box.Add(self.TimeSigBox, flag = wx.LEFT | wx.RIGHT,
-                border = borderValue)
-        box.AddSpacer(borderValue)
-        box.Add(self.PatternTitle, flag = wx.LEFT | wx.RIGHT,
-                border = borderValue)
-        box.Add(self.PatternBox, flag = wx.LEFT | wx.RIGHT, border = borderValue)
-        if ENABLE_VOL == True:
-            box.AddSpacer(borderValue)
-            box.Add(self.VolTitle, flag = wx.LEFT | wx.RIGHT, border = borderValue)
-            box.Add(self.Vol, flag = wx.LEFT | wx.RIGHT, border = borderValue)
+        # adding parts to the "box" (vertical boxsizer)
+        lst = [None,
+               self.BpmTitle,
+               self.BpmCtrl,
+               None,
+               self.TimeSigTitle,
+               self.TimeSigBox,
+               None,
+               self.PatternTitle,
+               self.PatternBox,
+               None]
         
-        box.Add(self.StartBtn, flag = wx.ALL, border = borderValue)
- 
+        if ENABLE_VOL == True:
+            lstVol = [self.VolTitle,
+                      self.Vol,
+                      None]
+            for each in lstVol:
+                lst.append(each)
+        
+        lst.append(self.StartBtn)
+
+        for each in lst:
+            if each == None:
+                box.AddSpacer(borderValue)
+            else:
+                box.Add(each, flag = wx.LEFT | wx.RIGHT, border = borderValue)
+                
 
         cmdList = [[self.On_menuStart, menuStart],
                    [self.On_menuBpmUp01, menuBpmUp01],
